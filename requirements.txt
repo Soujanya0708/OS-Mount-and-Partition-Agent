@@ -1,0 +1,5 @@
+# Python dependencies for Mount & Partition Agent
+# Install with: pip install -r requirements.txt
+
+# Google Gemini API SDK
+google-genai>=0.8.0

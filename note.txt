@@ -1,0 +1,308 @@
+================================================================================
+ NOTE.TXT — Developer Notes: Mount & Partition Agent
+ Created: October 2026
+================================================================================
+
+This file documents every file in the project, its purpose, and key
+implementation details. Read this first if you are picking up this project.
+
+--------------------------------------------------------------------------------
+PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+The Mount & Partition Agent is a natural-language Linux storage assistant.
+The user types plain English; the agent (powered by Google Gemini) translates
+the intent into a sequence of safe, auditable Linux storage commands:
+  lsblk   → enumerate block devices
+  losetup → attach/detach loop devices (ISO/image files)
+  mount(2)→ kernel mount syscall via Python ctypes
+  blkid   → filesystem type detection
+
+The LLM never gets a shell. Every operation goes through a curated Python
+function with strict input validation.
+
+================================================================================
+FILE-BY-FILE BREAKDOWN
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+ FILE: mount_agent.py
+ TYPE: Main application (Python 3.10+)
+ REQUIRES ROOT: Yes (losetup, mount syscall)
+────────────────────────────────────────────────────────────────────────────────
+
+PURPOSE
+  The single entry-point for the agent. Handles:
+  1. Gemini API integration (function calling / tool use)
+  2. All Linux storage operations via subprocess / ctypes
+  3. The interactive REPL (read-eval-print loop)
+
+KEY SECTIONS
+
+  [Config]
+    MODEL       = "gemini-2.5-flash"   — Gemini model to use
+    MOUNT_ROOT  = /mnt/agent           — All mounts land here (safety boundary)
+    MS_RDONLY   = 1                    — mount(2) flag for read-only
+    ALLOW_REAL_DISKS = False           — toggle via --allow-real-disks CLI flag
+
+  [libc bindings] (ctypes)
+    libc.mount()   — calls mount(2) directly; avoids spawning a shell for mount
+    libc.umount2() — calls umount2(2) directly
+
+  [Tool implementations]  ← these are the functions Gemini can call
+
+    list_block_devices()
+      Runs: lsblk -J -o NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,RO,MOUNTPOINTS,PKNAME
+      Returns JSON of all block devices seen by the kernel.
+      Use case: discover partitions after attaching a disk image.
+
+    list_loop_devices()
+      Runs: losetup -J -l
+      Returns which loop devices exist and which files back them.
+      Use case: audit what's already attached before acting.
+
+    attach_loop(image_path, read_only=True)
+      Runs: losetup --find --show --partscan [--read-only] <path>
+      Attaches an image file to the next free /dev/loopN.
+      --partscan: kernel automatically creates /dev/loopNpM partition nodes.
+      Runs `udevadm settle` afterwards so partition nodes are ready.
+      Safety: read-write requires terminal confirmation.
+
+    detect_filesystem(device)
+      Runs: blkid -p -o export <device>
+      Returns key=value pairs: TYPE, LABEL, UUID, USAGE, etc.
+      If it fails, the device is likely a partition table (not a filesystem).
+
+    mount_device(device, name, fstype=None, read_only=True)
+      Calls libc.mount() directly (not subprocess).
+      Mounts at /mnt/agent/<name> (created if absent).
+      Auto-detects fstype via detect_filesystem() if not given.
+      Safety: name is validated against [A-Za-z0-9._-]{1,64}.
+      Safety: read-write requires terminal confirmation.
+      Cleanup: removes empty mountpoint dir on failure.
+
+    list_mounts()
+      Reads /proc/self/mountinfo and filters for /mnt/agent/ prefixed paths.
+      Returns list of {mountpoint, fstype, source, options}.
+
+    unmount(name, detach_loop=True)
+      Calls libc.umount2() on /mnt/agent/<name>.
+      Removes the (now empty) directory.
+      If the backing source was a loop device, also runs losetup -d.
+      Handles partition nodes (strips trailing pN before detaching).
+
+    detach_loop_device(device)
+      Runs: losetup -d <device>
+      Used for cleanup after a failed mount attempt.
+
+    list_files(name, subpath="", max_entries=200)
+      Lists a directory inside a mounted image using pathlib.
+      SECURITY: resolves symlinks and rejects any path outside the mountpoint.
+      Truncates at max_entries to avoid overwhelming the model.
+
+  [TOOLS list]
+    Python list of google.genai.types.FunctionDeclaration objects.
+    Each declaration maps 1-to-1 to a function in TOOLS_IMPL.
+    Gemini reads these schemas to decide which function to call.
+
+  [SYSTEM prompt]
+    Instructs Gemini to follow a specific workflow:
+      attach_loop → list_block_devices → detect_filesystem
+      → mount_device → list_files
+    Reinforces read-only default and cleanup-on-failure behavior.
+
+  [chat() — the agent loop]
+    1. Reads a line from stdin (the user's natural-language request).
+    2. Appends it to `history` (multi-turn conversation context).
+    3. Calls client.models.generate_content() with SYSTEM + TOOLS + history.
+    4. If the model returns function_call parts, executes each tool,
+       appends function_response parts to history, and loops back to step 3.
+    5. When the model returns text only (stop_reason != tool_use), prints
+       it and waits for the next user input.
+
+  [Entry point / argparse]
+    --allow-real-disks  : unlocks /dev/sdX and NVMe devices
+    Platform check      : exits on non-Linux
+    Root check          : exits if not UID 0
+    Creates /mnt/agent  : ensures the mount root exists
+
+DEPENDENCIES
+  google-genai  — Official Google Gemini Python SDK (pip install google-genai)
+  ctypes        — stdlib; wraps libc.mount / libc.umount2
+  subprocess    — stdlib; runs lsblk, losetup, blkid, udevadm
+  pathlib       — stdlib; path manipulation and file listing
+  argparse      — stdlib; CLI argument parsing
+
+ENVIRONMENT VARIABLES
+  GEMINI_API_KEY   — required; get one free at aistudio.google.com
+
+
+────────────────────────────────────────────────────────────────────────────────
+ FILE: requirements.txt
+ TYPE: Pip dependency manifest
+────────────────────────────────────────────────────────────────────────────────
+
+Lists Python packages needed beyond the standard library.
+Currently only one:  google-genai>=0.8.0
+
+Install with:  pip install -r requirements.txt
+All other libraries used (ctypes, subprocess, pathlib, json, re, os, sys,
+argparse) are part of Python's standard library and need no installation.
+
+
+────────────────────────────────────────────────────────────────────────────────
+ FILE: setup.sh
+ TYPE: Bash setup script
+────────────────────────────────────────────────────────────────────────────────
+
+One-shot setup helper. Run once after cloning:  bash setup.sh
+
+Steps:
+  1. Verifies Python 3.10+ is installed.
+  2. Upgrades pip and installs requirements.txt.
+  3. Checks that system tools are present:
+       lsblk, losetup, blkid, udevadm
+     (part of the `util-linux` package on most distros)
+  4. Checks for GEMINI_API_KEY in the environment and prints instructions
+     if it is missing.
+
+Does NOT require root.
+
+
+────────────────────────────────────────────────────────────────────────────────
+ FILE: demo.sh
+ TYPE: Bash demo/walkthrough script
+────────────────────────────────────────────────────────────────────────────────
+
+Prints a colour-coded step-by-step walkthrough of typical agent interactions.
+Does NOT launch the agent itself (root is needed for that).
+Safe to run as any user:  bash demo.sh
+
+Demonstrates:
+  - Mounting an ISO and exploring its contents
+  - Checking current mounts
+  - Browsing a subfolder
+  - Attaching a disk image with multiple partitions
+  - Clean unmount + detach
+  - Using --allow-real-disks
+
+
+────────────────────────────────────────────────────────────────────────────────
+ FILE: README.md
+ TYPE: GitHub-rendered documentation
+────────────────────────────────────────────────────────────────────────────────
+
+Full project documentation shown on the GitHub repository page.
+Sections:
+  - Feature table (what the agent can do)
+  - Requirements (OS, Python, packages)
+  - Quick Start (clone → install → set API key → run)
+  - Example prompts (copy-pasteable into the REPL)
+  - Tool reference table (every Gemini function declaration)
+  - Safety model (explains the 6 guardrails)
+  - CLI options (--allow-real-disks)
+  - Project structure
+
+
+────────────────────────────────────────────────────────────────────────────────
+ FILE: .gitignore
+ TYPE: Git configuration
+────────────────────────────────────────────────────────────────────────────────
+
+Prevents accidental commits of:
+  - Python caches (__pycache__, *.pyc)
+  - Virtual environments (.venv/, venv/)
+  - Secret/credential files (.env, secrets.json, .envrc)
+  - Editor config (.vscode/, .idea/, *.swp)
+  - macOS artefacts (.DS_Store)
+  - Log files (*.log)
+  - /mnt/ directory (mount data should never be committed)
+
+IMPORTANT: Never commit your GEMINI_API_KEY. Use `export` in your shell.
+
+
+────────────────────────────────────────────────────────────────────────────────
+ FILE: LICENSE
+ TYPE: Open source license
+────────────────────────────────────────────────────────────────────────────────
+
+MIT License — allows anyone to use, modify, and distribute the code freely,
+provided the copyright notice is retained.
+
+
+────────────────────────────────────────────────────────────────────────────────
+ FILE: note.txt  ← you are reading this
+ TYPE: Developer reference
+────────────────────────────────────────────────────────────────────────────────
+
+This file. Documents all project files, their purpose, and implementation
+details. Update this file whenever you add a new file or change functionality.
+
+
+================================================================================
+SAFETY GUARDRAILS SUMMARY
+================================================================================
+
+1. NO SHELL=TRUE
+   All subprocess calls use explicit argv lists.
+   The model cannot inject shell metacharacters.
+
+2. MOUNT ROOT CONFINEMENT
+   All mounts go to /mnt/agent/<name>. The model cannot specify an
+   arbitrary mountpoint like /etc or /.
+
+3. READ-ONLY BY DEFAULT
+   mount_device() and attach_loop() default to read_only=True.
+   Read-write requires typing "y" at the terminal prompt.
+
+4. LOOP-DEVICE GUARD
+   Real block devices (/dev/sda, /dev/nvme0n1) are blocked unless
+   the operator passes --allow-real-disks at startup.
+
+5. SYMLINK-SAFE FILE BROWSER
+   list_files() resolves symlinks with Path.resolve() and checks that
+   the resolved path is still inside the mount root.
+
+6. CLEANUP ON FAILURE
+   The system prompt instructs the model to call detach_loop_device()
+   if mount_device() fails, preventing orphaned loop devices.
+
+
+================================================================================
+HOW TO PUSH TO GITHUB
+================================================================================
+
+If you have already created the repo on GitHub:
+
+  cd "d:\SEM 5\Operating System\Mount and Partition"   # (on Windows)
+  # On Linux/WSL:
+  cd /mnt/d/SEM\ 5/Operating\ System/Mount\ and\ Partition
+
+  git init
+  git remote add origin https://github.com/<your-username>/<repo-name>.git
+  git add .
+  git commit -m "Initial commit: Mount & Partition Agent"
+  git branch -M main
+  git push -u origin main
+
+Or if the repo was already cloned:
+
+  git add .
+  git commit -m "Add mount_agent.py, README, setup, demo, gitignore, notes"
+  git push
+
+
+================================================================================
+FUTURE ENHANCEMENTS (ideas)
+================================================================================
+
+- Add qcow2 support via `qemu-nbd` (mount QCOW2 images)
+- Partition table summary tool (parted -m)
+- File content preview tool (read first N bytes of a file in the mount)
+- Web / Flask UI wrapping the agent
+- Unit tests with mock subprocess calls
+- systemd service file for always-on daemon mode
+- Docker image for reproducible environment
+
+================================================================================
+END OF NOTES
+================================================================================
