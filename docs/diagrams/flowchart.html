@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project 14: Mount & Partition Agent - Flow Diagram</title>
+    <!-- Mermaid CDN for automatic rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --border-color: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-cyan: #38bdf8;
+            --accent-green: #4ade80;
+            --accent-purple: #c084fc;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            margin: 0;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            max-width: 950px;
+            width: 100%;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: var(--accent-cyan);
+            margin-bottom: 8px;
+            font-size: 28px;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 16px;
+            line-height: 1.5;
+        }
+
+        .diagram-container {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 1100px;
+            width: 100%;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+            overflow-x: auto;
+        }
+
+        .mermaid {
+            display: flex;
+            justify-content: center;
+        }
+
+        .steps-container {
+            max-width: 1100px;
+            width: 100%;
+            margin-top: 35px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+        }
+
+        .step-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .step-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--accent-cyan);
+        }
+
+        .step-num {
+            display: inline-block;
+            background: var(--accent-cyan);
+            color: #0f172a;
+            font-weight: bold;
+            border-radius: 6px;
+            padding: 2px 8px;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+
+        .step-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+            color: #fff;
+        }
+
+        .step-card p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        code {
+            background: #0f172a;
+            color: var(--accent-green);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Project 14: Mount & Partition Agent</h1>
+        <p>Execution Flowchart: Translating Natural Language Prompts into Block Device Mapping and Kernel <code>mount()</code> Calls</p>
+    </div>
+
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart TD
+    %% Styling
+    classDef inputNode fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff;
+    classDef serviceNode fill:#312e81,stroke:#6366f1,stroke-width:2px,color:#fff;
+    classDef toolNode fill:#14532d,stroke:#22c55e,stroke-width:2px,color:#fff;
+    classDef decisionNode fill:#701a75,stroke:#d946ef,stroke-width:2px,color:#fff;
+    classDef outputNode fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff;
+
+    User([Terminal User / Orchestrator Agent]):::inputNode
+    User -->|'Mount this ubuntu.iso file so I can look at the files inside'| CLI[CLI Command: mount-agent]:::inputNode
+
+    CLI -->|IPC: Unix Domain Socket /run/mount_agent.sock| Daemon[mount-agent.service Daemon]:::serviceNode
+
+    subgraph Agent_Core [Agent Service Core #14]
+        Daemon --> LLM[LLM Intent Parser & Tool Selector]:::serviceNode
+        LLM -->|Plan: Tool + Parameters| Validator[Tool & Security Validator]:::serviceNode
+    end
+
+    Validator -->|tool: mount_target| CheckType{Source Type?}:::decisionNode
+    Validator -->|tool: list_devices| ToolLsblk[Tool: lsblk]:::toolNode
+    Validator -->|tool: unmount_target| ToolUmount[Tool: umount2 syscall]:::toolNode
+
+    subgraph Linux_Kernel_Execution [Linux Kernel Execution Layer]
+        CheckType -->|Image File: .iso, .img| Losetup[losetup Tool\nMap to /dev/loopX]:::toolNode
+        CheckType -->|Block Device: /dev/sdX| FsDetect[Format Detection: blkid / file\nIdentify: iso9660, ext4]:::toolNode
+
+        Losetup --> FsDetect
+        FsDetect --> PrepareDir[Create Mount Point\n/mnt/agent/ubuntu]:::toolNode
+        PrepareDir --> Syscall[mount System Call\nflags: MS_RDONLY, MS_NOSUID, MS_NODEV]:::toolNode
+    end
+
+    Syscall --> MountTable[/proc/mounts Updated]:::outputNode
+    MountTable --> Formatter[Response Formatter]:::serviceNode
+    ToolLsblk --> Formatter
+    ToolUmount --> Formatter
+
+    Formatter -->|JSON Status & Mount Details| CLI
+    CLI -->|Formatted Terminal Report\n'Mounted at /mnt/agent/ubuntu'| User
+        </pre>
+    </div>
+
+    <div class="steps-container">
+        <div class="step-card">
+            <span class="step-num">Step 1</span>
+            <h3>Natural Language Input</h3>
+            <p>The terminal user executes <code>mount-agent "Mount ubuntu.iso"</code>. No technical flags or block device knowledge required.</p>
+        </div>
+        <div class="step-card">
+            <span class="step-num">Step 2</span>
+            <h3>Unix Domain Socket IPC</h3>
+            <p>The CLI sends the instruction payload to <code>/run/mount_agent.sock</code>, where the privileged root service daemon is listening.</p>
+        </div>
+        <div class="step-card">
+            <span class="step-num">Step 3</span>
+            <h3>Intent & Parameter Parsing</h3>
+            <p>The agent parses the intent using local LLM / rules, extracting target <code>ubuntu.iso</code> and selecting <code>mount_target</code> tool.</p>
+        </div>
+        <div class="step-card">
+            <span class="step-num">Step 4</span>
+            <h3>Loopback Mapping (losetup)</h3>
+            <p>Because an ISO is a file, the agent uses <code>losetup -fP</code> to allocate a virtual block device (e.g., <code>/dev/loop0</code>).</p>
+        </div>
+        <div class="step-card">
+            <span class="step-num">Step 5</span>
+            <h3>Filesystem Detection</h3>
+            <p>The agent runs <code>blkid</code> / <code>file -s</code> to verify the filesystem format is <code>iso9660</code>.</p>
+        </div>
+        <div class="step-card">
+            <span class="step-num">Step 6</span>
+            <h3>Kernel mount() Syscall</h3>
+            <p>Directly invokes the Linux <code>mount()</code> system call with safety flags <code>MS_RDONLY | MS_NOSUID | MS_NODEV</code> to <code>/mnt/agent/ubuntu</code>.</p>
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Browser/temp profiles created by tooling
+.tmp_edge/
+
+# Large disk images (keep only the small sample)
+*.iso
+*.img
+*.vhd
+*.vhdx
+!samples/test.iso
+
+# Secrets
+.env
+
+# Old folder from before the reorganisation (delete it once no terminal is open in it)
+mount_agent_terminal/
+
+# Node modules for the report generator
+node_modules/
+package-lock.json

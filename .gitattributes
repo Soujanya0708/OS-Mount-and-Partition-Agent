@@ -1,0 +1,9 @@
+# Store text with LF so scripts work after cloning on Linux
+* text=auto eol=lf
+*.ps1 text eol=crlf
+
+# Binary files - never convert line endings
+*.pdf binary
+*.docx binary
+*.png binary
+*.iso binary

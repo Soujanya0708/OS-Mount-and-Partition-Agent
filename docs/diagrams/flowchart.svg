@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1150" width="100%" height="100%" style="background-color: #0b1120; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Title Banner -->
+  <text x="500" y="45" text-anchor="middle" fill="#38bdf8" font-size="24" font-weight="bold">Project 14: Mount &amp; Partition Agent</text>
+  <text x="500" y="75" text-anchor="middle" fill="#94a3b8" font-size="14">Execution Flow: Natural Language Input → Block Device Mapping → Kernel mount()</text>
+
+  <!-- 1. USER & CLI LAYER -->
+  <g filter="url(#shadow)">
+    <!-- User Input Node -->
+    <rect x="250" y="110" width="500" height="60" rx="30" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+    <text x="500" y="136" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="bold">Terminal User / Orchestrator Agent (1 of 35)</text>
+    <text x="500" y="156" text-anchor="middle" fill="#38bdf8" font-size="12">"Mount this ubuntu.iso file so I can look at the files inside."</text>
+
+    <!-- Arrow down -->
+    <path d="M 500 170 L 500 210" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- CLI Command Box -->
+    <rect x="300" y="210" width="400" height="50" rx="8" fill="#1e3a8a" stroke="#60a5fa" stroke-width="2"/>
+    <text x="500" y="235" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold">CLI Wrapper: mount_cli.py</text>
+    <text x="500" y="252" text-anchor="middle" fill="#bfdbfe" font-size="12">Connects to Unix Domain Socket (/run/mount_agent.sock)</text>
+  </g>
+
+  <!-- Arrow down -->
+  <path d="M 500 260 L 500 310" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="515" y="290" fill="#94a3b8" font-size="12">AF_UNIX IPC JSON Request</text>
+
+  <!-- 2. SERVICE CORE LAYER -->
+  <rect x="120" y="310" width="760" height="230" rx="12" fill="#0f172a" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="6,6"/>
+  <text x="140" y="335" fill="#a5b4fc" font-size="14" font-weight="bold">AGENT SERVICE CORE (Runs as Root / systemd Daemon)</text>
+
+  <!-- Daemon Socket Listener -->
+  <g filter="url(#shadow)">
+    <rect x="280" y="350" width="440" height="50" rx="8" fill="#312e81" stroke="#818cf8" stroke-width="2"/>
+    <text x="500" y="375" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold">Service Daemon (service_daemon.py)</text>
+    <text x="500" y="392" text-anchor="middle" fill="#c7d2fe" font-size="12">Listens on /run/mount_agent.sock, dispatches requests</text>
+
+    <!-- Arrow down -->
+    <path d="M 500 400 L 500 435" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- LLM Engine / Rule Fallback -->
+    <rect x="240" y="435" width="520" height="85" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+    <text x="500" y="460" text-anchor="middle" fill="#38bdf8" font-size="14" font-weight="bold">LLM Intent Reasoning &amp; Tool Selector (mount_agent.py)</text>
+    <text x="500" y="480" text-anchor="middle" fill="#f8fafc" font-size="12">Target: "ubuntu.iso" | Intent: "mount_target" | Read-Only: true</text>
+    <text x="500" y="500" text-anchor="middle" fill="#4ade80" font-size="11">JSON: {"tool": "mount_target", "parameters": {"source_path": "ubuntu.iso"}}</text>
+  </g>
+
+  <!-- Arrow down to decision -->
+  <path d="M 500 520 L 500 580" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 3. DECISION DIAMOND -->
+  <g filter="url(#shadow)">
+    <polygon points="500,580 640,630 500,680 360,630" fill="#4a044e" stroke="#d946ef" stroke-width="2"/>
+    <text x="500" y="626" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">Is Source File</text>
+    <text x="500" y="642" text-anchor="middle" fill="#f5d0fe" font-size="12">an ISO or Disk Image?</text>
+  </g>
+
+  <!-- Decision Branches -->
+  <!-- Left branch: Yes (ISO/IMG) -->
+  <path d="M 360 630 L 220 630 L 220 720" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="270" y="620" fill="#38bdf8" font-size="12" font-weight="bold">YES (ubuntu.iso)</text>
+
+  <!-- Right branch: No (Block Device) -->
+  <path d="M 640 630 L 780 630 L 780 720" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="670" y="620" fill="#94a3b8" font-size="12">NO (/dev/sdb1)</text>
+
+  <!-- 4. LOW-LEVEL SYSTEM TOOLS LAYER -->
+  <rect x="70" y="700" width="860" height="300" rx="12" fill="#032b1f" stroke="#10b981" stroke-width="1.5" stroke-dasharray="6,6"/>
+  <text x="90" y="725" fill="#6ee7b7" font-size="14" font-weight="bold">SYSTEM EXECUTION LAYER (Linux Kernel &amp; Low-level Tools)</text>
+
+  <g filter="url(#shadow)">
+    <!-- Tool 1: losetup -->
+    <rect x="100" y="740" width="240" height="70" rx="8" fill="#064e3b" stroke="#34d399" stroke-width="2"/>
+    <text x="220" y="765" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">Tool 1: losetup</text>
+    <text x="220" y="783" text-anchor="middle" fill="#a7f3d0" font-size="11">ioctl LOOP_CTL_GET_FREE</text>
+    <text x="220" y="798" text-anchor="middle" fill="#f8fafc" font-size="11">Maps file to /dev/loop0</text>
+
+    <!-- Tool 2: blkid / format detector -->
+    <rect x="380" y="740" width="240" height="70" rx="8" fill="#064e3b" stroke="#34d399" stroke-width="2"/>
+    <text x="500" y="765" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">Tool 2: blkid / file</text>
+    <text x="500" y="783" text-anchor="middle" fill="#a7f3d0" font-size="11">Format Auto-Detection</text>
+    <text x="500" y="798" text-anchor="middle" fill="#f8fafc" font-size="11">Detects: iso9660</text>
+
+    <!-- Direct device block -->
+    <rect x="660" y="740" width="240" height="70" rx="8" fill="#064e3b" stroke="#34d399" stroke-width="2"/>
+    <text x="780" y="765" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">Direct Block Device</text>
+    <text x="780" y="783" text-anchor="middle" fill="#a7f3d0" font-size="11">/dev/sdb1, /dev/nvme...</text>
+    <text x="780" y="798" text-anchor="middle" fill="#f8fafc" font-size="11">Skip loopback allocation</text>
+
+    <!-- Connectors -->
+    <path d="M 340 775 L 380 775" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M 660 775 L 620 775" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- Path down to mount() syscall -->
+    <path d="M 500 810 L 500 855" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- Kernel mount() Syscall Box -->
+    <rect x="220" y="855" width="560" height="85" rx="8" fill="#14532d" stroke="#4ade80" stroke-width="2"/>
+    <text x="500" y="880" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold">Linux mount() System Call (via ctypes / &lt;sys/mount.h&gt;)</text>
+    <text x="500" y="900" text-anchor="middle" fill="#86efac" font-size="12">mount("/dev/loop0", "/mnt/agent/ubuntu", "iso9660", MS_RDONLY | MS_NOSUID, NULL)</text>
+    <text x="500" y="920" text-anchor="middle" fill="#f8fafc" font-size="12">Creates directory /mnt/agent/ubuntu and attaches filesystem</text>
+  </g>
+
+  <!-- Arrow down to output -->
+  <path d="M 500 940 L 500 1010" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 5. FINAL TERMINAL OUTPUT -->
+  <g filter="url(#shadow)">
+    <rect x="200" y="1010" width="600" height="75" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+    <text x="500" y="1035" text-anchor="middle" fill="#4ade80" font-size="14" font-weight="bold">SUCCESS REPORT RETURNED TO USER</text>
+    <text x="500" y="1055" text-anchor="middle" fill="#f8fafc" font-size="12">[✓] Mounted 'ubuntu.iso' on '/mnt/agent/ubuntu' (FS: iso9660, Loop: /dev/loop0)</text>
+    <text x="500" y="1072" text-anchor="middle" fill="#94a3b8" font-size="11">User can browse immediately: ls -la /mnt/agent/ubuntu</text>
+  </g>
+</svg>
