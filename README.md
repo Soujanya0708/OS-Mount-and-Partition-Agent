@@ -36,6 +36,7 @@ agent: Mounted ubuntu.iso at /mnt/agent/ubuntu (iso9660, read-only).
 | Run on **Linux** - step by step | [docs/RUN_LINUX.md](docs/RUN_LINUX.md) |
 | **Review 3 report** - testing, evaluation & results (PDF) | [docs/Review_3_Testing_Evaluation_and_Results.pdf](docs/Review_3_Testing_Evaluation_and_Results.pdf) |
 | Review 2 report - architecture & implementation (PDF) | [docs/Review_2_System_Architecture_and_Implementation.pdf](docs/Review_2_System_Architecture_and_Implementation.pdf) |
+| Review 1 report - introduction & literature review (PDF) | [docs/Review_1_Introduction_and_Literature_Review.pdf](docs/Review_1_Introduction_and_Literature_Review.pdf) |
 | Download as ZIP | [main.zip](https://github.com/Akshat-git-dev/os_mount_terminal/archive/refs/heads/main.zip) |
 
 ## Running it
