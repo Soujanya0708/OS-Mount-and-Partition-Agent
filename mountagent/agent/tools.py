@@ -152,6 +152,15 @@ class ToolBox:
 
     def _tool_unmount(self, target: str):
         record = self.session.find(target)
+        if record is None and target.strip().lower() in ("it", "that", "this", "last"):
+            raise ToolError("nothing has been mounted in this session yet; give a drive letter (D:) or an image path")
+        if record is None:
+            # A relative image path ("samples/test.iso"): match it against the full path stored at mount time,
+            # and hand the OS the full path, since Dismount-DiskImage cannot resolve relative ones
+            path = Path(target.strip().strip("'\"")).expanduser()
+            if path.is_file():
+                target = str(path.resolve())
+                record = self.session.find(target)
         result = self.platform.unmount(target, record)
         if record:
             self.session.remove(record)
